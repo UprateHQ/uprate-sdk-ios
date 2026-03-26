@@ -1,0 +1,19 @@
+opt_in_rules:
+  - force_unwrapping
+  - force_cast
+  - force_try
+  - fatal_error_message
+  - implicitly_unwrapped_optional
+
+force_unwrapping: error
+force_cast: error
+force_try: error
+fatal_error_message: error
+implicitly_unwrapped_optional: error
+
+included:
+  - Sources
+
+excluded:
+  - Tests
+  - .build
