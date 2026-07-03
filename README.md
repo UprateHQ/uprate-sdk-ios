@@ -49,7 +49,7 @@ dependencies: [
 
 In your [UprateHQ dashboard](https://app.upratehq.com), open **Apps**, find your app, and choose **SDK API Keys** to generate a publishable key. It starts with `uprt_pub_` — that is the one the SDK needs.
 
-> **Heads up:** keys from **Settings > API keys** are for the REST API and will not work with the SDK. The secret key (`uprt_secret_`) from the SDK key pair belongs on your server, never in the app.
+> **Heads up:** keys from **Settings > API keys** are for the REST API and won't work with the SDK. The secret key (`uprt_secret_`) from the SDK key pair belongs on your server, never in the app.
 
 ### 2. Configure the SDK
 
