@@ -7,8 +7,10 @@ public enum UprateError: Error, Sendable {
     /// setUserContext() has not been called
     case userContextNotSet
 
-    /// 401 — API key is invalid, revoked, or missing
-    case invalidApiKey
+    /// 401 — API key is invalid, revoked, or missing. Carries the server's
+    /// explanation when available (e.g. a REST API token was used instead of
+    /// an SDK publishable key).
+    case invalidApiKey(message: String? = nil)
 
     /// 403 — SDK feature access not enabled in the dashboard
     case featureNotEnabled
@@ -39,8 +41,8 @@ extension UprateError: LocalizedError {
             "UprateSDK has not been configured. Call UprateSDK.configure(apiKey:) first."
         case .userContextNotSet:
             "User context is not set. Call setUserContext(userId:) before using SDK features."
-        case .invalidApiKey:
-            "Invalid or revoked API key."
+        case .invalidApiKey(let message):
+            message ?? "Invalid or revoked API key."
         case .featureNotEnabled:
             "This feature is not enabled for your app. Check your UprateHQ dashboard settings."
         case .notFound:

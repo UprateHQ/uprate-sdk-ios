@@ -95,6 +95,34 @@ struct APIClientTests {
         }
     }
 
+    @Test("surfaces server message on 401")
+    func surfacesServerMessageOn401() async {
+        MockURLProtocol.reset()
+        let serverMessage = "This does not look like an SDK key. Keys from Settings -> API keys "
+            + "only work with the REST API; the mobile SDK needs a publishable key (uprt_pub_...)."
+        MockURLProtocol.register(
+            path: "roadmap",
+            statusCode: 401,
+            json: #"{"message": "\#(serverMessage)"}"#
+        )
+
+        let client = APIClient(configuration: TestFixtures.testConfiguration, urlSession: .mocked)
+        await client.setUserContext(UserContext(userId: "user_1"))
+
+        do {
+            _ = try await client.execute(
+                APIEndpoint(method: .get, path: "roadmap"),
+                as: EmptyResponse.self
+            )
+            Issue.record("Expected invalidApiKey error")
+        } catch let UprateError.invalidApiKey(message) {
+            #expect(message == serverMessage)
+            #expect(UprateError.invalidApiKey(message: message).localizedDescription == serverMessage)
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
     @Test("maps 403 to featureNotEnabled")
     func maps403() async {
         MockURLProtocol.reset()

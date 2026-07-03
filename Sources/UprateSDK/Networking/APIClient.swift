@@ -96,7 +96,10 @@ extension APIClient {
         case 200...299:
             return
         case 401:
-            throw UprateError.invalidApiKey
+            // The server explains *which* wrong key type was sent (REST token,
+            // secret key, ...) — surface that instead of a generic rejection.
+            let errorBody = try? JSONDecoder.uprate.decode(ErrorResponse.self, from: data)
+            throw UprateError.invalidApiKey(message: errorBody?.message)
         case 403:
             throw UprateError.featureNotEnabled
         case 404:

@@ -39,15 +39,17 @@ Or add it to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/UprateHQ/uprate-sdk-ios.git", from: "0.1.1")
+    .package(url: "https://github.com/UprateHQ/uprate-sdk-ios.git", from: "0.1.2")
 ]
 ```
 
 ## Quick Start
 
-### 1. Get Your API Key
+### 1. Get Your SDK Key
 
-Create a publishable API key in your [UprateHQ dashboard](https://app.upratehq.com). Navigate to your app's **Settings > SDK** to generate one.
+In your [UprateHQ dashboard](https://app.upratehq.com), open **Apps**, find your app, and choose **SDK API Keys** to generate a publishable key. It starts with `uprt_pub_` — that is the one the SDK needs.
+
+> **Heads up:** keys from **Settings > API keys** are for the REST API and will not work with the SDK. The secret key (`uprt_secret_`) from the SDK key pair belongs on your server, never in the app.
 
 ### 2. Configure the SDK
 
