@@ -151,6 +151,35 @@ Each `FeedbackSubmission` also includes `replies`, an empty array when an older 
 
 If the server requires a user token or rejects it, the SDK throws `UprateError.userTokenRejected(message:)` with the server's message. Other 401 responses still throw `UprateError.invalidApiKey(message:)`.
 
+#### Push notifications
+
+Uprate sends a notification when a feedback reply arrives, without the reply text. Upload your APNs `.p8` key, Key ID, and Team ID on your app's SDK page under **Push**.
+
+Your app handles notification permission, APNs registration, and notification taps. After `setUserContext` completes, register the device token in `application(_:didRegisterForRemoteNotificationsWithDeviceToken:)`, and register again whenever the token changes:
+
+```swift
+func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+    Task {
+        try await UprateSDK.shared.feedback.registerPushToken(deviceToken)
+    }
+}
+```
+
+Keep the latest device token and unregister it before clearing the user context on logout:
+
+```swift
+try await UprateSDK.shared.feedback.unregisterPushToken(deviceToken)
+await UprateSDK.shared.clearUserContext()
+```
+
+In your notification tap handler, use `replyId(fromPush:)` to recognize an Uprate reply push, then call `getUnreadReplies()` and display the returned replies:
+
+```swift
+if UprateFeedback.replyId(fromPush: userInfo) != nil {
+    let replies = try await UprateSDK.shared.feedback.getUnreadReplies()
+}
+```
+
 #### Review Signals
 
 Record when you show the App Store review prompt to enrich review data in your dashboard:
