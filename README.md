@@ -153,7 +153,7 @@ If the server requires a user token or rejects it, the SDK throws `UprateError.u
 
 #### Push notifications
 
-Uprate sends a notification when a feedback reply arrives, without the reply text. Upload your APNs `.p8` key, Key ID, and Team ID on your app's SDK page under **Push**.
+Uprate sends a notification when a feedback reply arrives, without the reply text. Upload your APNs `.p8` key, Key ID, and Team ID on your app's SDK page under **Push**. Apps made for kids can't use push; `registerPushToken` throws `UprateError.featureNotEnabled` for them.
 
 Your app handles notification permission, APNs registration, and notification taps. iOS often hands you the device token before anyone has signed in, so keep it and register it both when it arrives and right after `setUserContext`:
 
@@ -171,14 +171,14 @@ func registerForReplyPushes() async {
     do {
         try await UprateSDK.shared.feedback.registerPushToken(deviceToken)
     } catch UprateError.userContextNotSet {
-        // Nobody is signed in yet; setUserContext calls this again.
+        // Nobody is signed in yet; your sign-in code calls this again after setUserContext.
     } catch {
         print("Uprate push registration failed: \(error)")
     }
 }
 ```
 
-On logout, unregister the device before clearing the user context, and clear it even when unregistering fails (for example offline):
+On logout, unregister the device before clearing the user context, and clear it even when unregistering fails (for example offline). Until the device is unregistered or someone else registers it, it can still get the previous person's reply notifications (they never carry the reply text), so keep the token and try unregistering again the next time the app starts signed out:
 
 ```swift
 if let deviceToken {
