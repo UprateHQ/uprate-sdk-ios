@@ -1,4 +1,4 @@
-public struct UserContext: Sendable {
+public struct UserContext: Equatable, Sendable {
     public let userId: String
     public let email: String?
     public let name: String?

@@ -341,6 +341,21 @@ extension SerializedTests {
             }
         }
 
+        @Test("setting the same user context again keeps replies in flight")
+        func repliesSurviveSameContext() async throws {
+            MockURLProtocol.reset()
+            let sdk = UprateSDK(configuration: TestFixtures.testConfiguration, urlSession: .mocked)
+            await sdk.setUserContext(userId: "user_1", userToken: "token")
+            MockURLProtocol.register(path: "replies", statusCode: 200, json: "{\"replies\":[\(replyJSON)]}")
+            MockURLProtocol.beforeResponse = {
+                await sdk.setUserContext(userId: "user_1", userToken: "token")
+            }
+
+            let replies = try await sdk.feedback.getUnreadReplies()
+
+            #expect(replies.count == 1)
+        }
+
         // MARK: - Error handling
 
         @Test("submit with 429 throws rateLimited")

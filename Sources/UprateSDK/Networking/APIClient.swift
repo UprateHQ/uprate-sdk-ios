@@ -15,6 +15,8 @@ actor APIClient {
     }
 
     func setUserContext(_ context: UserContext) {
+        // Apps set the same identity again on every session refresh; that must not drop replies in flight.
+        guard context != userContext else { return }
         self.userContext = context
         userContextVersion += 1
     }
