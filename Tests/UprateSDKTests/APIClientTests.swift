@@ -73,6 +73,68 @@ struct APIClientTests {
         let request = MockURLProtocol.lastRequest
         #expect(request?.value(forHTTPHeaderField: "X-SDK-User-Email") == nil)
         #expect(request?.value(forHTTPHeaderField: "X-SDK-User-Name") == nil)
+        #expect(request?.value(forHTTPHeaderField: "X-SDK-User-Token") == nil)
+    }
+
+    @Test("sends user token on requests and clears it with the context", arguments: [false, true])
+    func sendsAndClearsUserToken(voidResponse: Bool) async throws {
+        MockURLProtocol.reset()
+        MockURLProtocol.register(path: "feedback", statusCode: 200, json: "{}")
+        let client = APIClient(configuration: TestFixtures.testConfiguration, urlSession: .mocked)
+        await client.setUserContext(UserContext(userId: "user_1", userToken: "signed_token"))
+
+        if voidResponse {
+            try await client.execute(APIEndpoint(method: .post, path: "feedback"))
+        } else {
+            _ = try await client.execute(APIEndpoint(method: .get, path: "feedback"), as: EmptyResponse.self)
+        }
+        #expect(MockURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-SDK-User-Token") == "signed_token")
+
+        await client.clearUserContext()
+        await client.setUserContext(UserContext(userId: "user_2"))
+        if voidResponse {
+            try await client.execute(APIEndpoint(method: .post, path: "feedback"))
+        } else {
+            _ = try await client.execute(APIEndpoint(method: .get, path: "feedback"), as: EmptyResponse.self)
+        }
+        #expect(MockURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-SDK-User-Id") == "user_2")
+        #expect(MockURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-SDK-User-Token") == nil)
+    }
+
+    @Test("maps user token 401 codes and preserves the server message", arguments: ["user_token_required", "user_token_invalid"])
+    func mapsUserTokenRejection(code: String) async throws {
+        MockURLProtocol.reset()
+        let serverMessage = "The user token was rejected."
+        MockURLProtocol.register(
+            path: "replies/unread",
+            statusCode: 401,
+            json: #"{"message":"\#(serverMessage)","code":"\#(code)"}"#
+        )
+        let client = APIClient(configuration: TestFixtures.testConfiguration, urlSession: .mocked)
+        await client.setUserContext(UserContext(userId: "user_1"))
+
+        do {
+            _ = try await client.execute(.unreadReplies, as: EmptyResponse.self)
+            Issue.record("Expected userTokenRejected")
+        } catch let UprateError.userTokenRejected(message) {
+            #expect(message == serverMessage)
+            #expect(UprateError.userTokenRejected(message: message).localizedDescription == serverMessage)
+        }
+    }
+
+    @Test("other 401 codes retain invalidApiKey mapping")
+    func mapsOther401Code() async throws {
+        MockURLProtocol.reset()
+        MockURLProtocol.register(path: "roadmap", statusCode: 401, json: #"{"message":"Invalid SDK key.","code":"invalid_key"}"#)
+        let client = APIClient(configuration: TestFixtures.testConfiguration, urlSession: .mocked)
+        await client.setUserContext(UserContext(userId: "user_1"))
+
+        do {
+            _ = try await client.execute(.roadmapItems, as: EmptyResponse.self)
+            Issue.record("Expected invalidApiKey")
+        } catch let UprateError.invalidApiKey(message) {
+            #expect(message == "Invalid SDK key.")
+        }
     }
 
     @Test("maps 401 to invalidApiKey")

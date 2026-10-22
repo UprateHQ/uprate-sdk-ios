@@ -6,6 +6,8 @@ extension SerializedTests {
     @Suite("UprateFeedback")
     struct UprateFeedbackTests {
 
+        private let replyJSON = #"{"uuid":"reply-1","feedback_uuid":"fb-1","body":"Fixed in 2.3","created_at":"2026-10-22T10:00:00+00:00","read_at":null}"#
+
         private func makeFeedback() async -> UprateFeedback {
             MockURLProtocol.reset()
             let client = APIClient(configuration: TestFixtures.testConfiguration, urlSession: .mocked)
@@ -258,6 +260,104 @@ extension SerializedTests {
             _ = try await feedback.getMySubmissions()
 
             #expect(MockURLProtocol.lastRequest?.httpMethod == "GET")
+        }
+
+        @Test("getUnreadReplies returns replies using GET /replies/unread")
+        func getUnreadReplies() async throws {
+            let feedback: any FeedbackProviding = await makeFeedback()
+            MockURLProtocol.register(path: "replies/unread", statusCode: 200, json: "{\"replies\":[\(replyJSON)]}")
+
+            let replies = try await feedback.getUnreadReplies()
+
+            #expect(replies.count == 1)
+            #expect(replies[0].id == "reply-1")
+            #expect(replies[0].feedbackId == "fb-1")
+            #expect(replies[0].body == "Fixed in 2.3")
+            #expect(replies[0].createdAt == ISO8601DateFormatter().date(from: "2026-10-22T10:00:00+00:00"))
+            #expect(replies[0].readAt == nil)
+            #expect(MockURLProtocol.lastRequest?.httpMethod == "GET")
+            #expect(MockURLProtocol.lastRequest?.url?.path == "/api/sdk/v1/replies/unread")
+            #expect(MockURLProtocol.lastRequest?.httpBody == nil)
+        }
+
+        @Test("markRead sends reply UUIDs using POST /replies/read")
+        func markRead() async throws {
+            let feedback: any FeedbackProviding = await makeFeedback()
+            let reply = try JSONDecoder.uprate.decode(FeedbackReply.self, from: Data(replyJSON.utf8))
+            MockURLProtocol.register(path: "replies/read", statusCode: 200, json: "{\"replies\":[\(replyJSON)]}")
+
+            try await feedback.markRead([reply])
+
+            let request = try #require(MockURLProtocol.lastRequest)
+            #expect(request.httpMethod == "POST")
+            #expect(request.url?.path == "/api/sdk/v1/replies/read")
+            #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+            let body = try #require(request.httpBody)
+            let json = try JSONSerialization.jsonObject(with: body) as? [String: [String]]
+            #expect(json == ["uuids": ["reply-1"]])
+        }
+
+        @Test("markRead with no replies makes no request, even without user context")
+        func markReadEmpty() async throws {
+            MockURLProtocol.reset()
+            let sdk = UprateSDK(configuration: TestFixtures.testConfiguration, urlSession: .mocked)
+
+            try await sdk.feedback.markRead([])
+
+            #expect(MockURLProtocol.lastRequest == nil)
+        }
+
+        @Test("history and reply operations reject results after user context changes", arguments: ["history", "unread", "read"], ["logout", "switch", "token", "logoutLogin"])
+        func privateReadsRejectChangedContext(call: String, change: String) async throws {
+            MockURLProtocol.reset()
+            let sdk = UprateSDK(configuration: TestFixtures.testConfiguration, urlSession: .mocked)
+            await sdk.setUserContext(userId: "user_1", userToken: "old_token")
+            let reply = try JSONDecoder.uprate.decode(FeedbackReply.self, from: Data(replyJSON.utf8))
+            MockURLProtocol.register(path: "replies", statusCode: 200, json: "{\"replies\":[\(replyJSON)]}")
+            MockURLProtocol.register(path: "feedback", statusCode: 200, json: "{\"feedback\":[]}")
+            MockURLProtocol.beforeResponse = {
+                switch change {
+                case "logout":
+                    await sdk.clearUserContext()
+                case "switch":
+                    await sdk.setUserContext(userId: "user_2")
+                case "token":
+                    await sdk.setUserContext(userId: "user_1", userToken: "new_token")
+                default:
+                    await sdk.clearUserContext()
+                    await sdk.setUserContext(userId: "user_1", userToken: "old_token")
+                }
+            }
+
+            do {
+                switch call {
+                case "history":
+                    _ = try await sdk.feedback.getMySubmissions()
+                case "unread":
+                    _ = try await sdk.feedback.getUnreadReplies()
+                default:
+                    try await sdk.feedback.markRead([reply])
+                }
+                Issue.record("Expected userContextChanged")
+            } catch UprateError.userContextChanged {
+                #expect(MockURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-SDK-User-Id") == "user_1")
+                #expect(MockURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-SDK-User-Token") == "old_token")
+            }
+        }
+
+        @Test("setting the same user context again keeps replies in flight")
+        func repliesSurviveSameContext() async throws {
+            MockURLProtocol.reset()
+            let sdk = UprateSDK(configuration: TestFixtures.testConfiguration, urlSession: .mocked)
+            await sdk.setUserContext(userId: "user_1", userToken: "token")
+            MockURLProtocol.register(path: "replies", statusCode: 200, json: "{\"replies\":[\(replyJSON)]}")
+            MockURLProtocol.beforeResponse = {
+                await sdk.setUserContext(userId: "user_1", userToken: "token")
+            }
+
+            let replies = try await sdk.feedback.getUnreadReplies()
+
+            #expect(replies.count == 1)
         }
 
         // MARK: - Error handling

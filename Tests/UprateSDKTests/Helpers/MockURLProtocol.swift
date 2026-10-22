@@ -3,10 +3,12 @@ import Foundation
 final class MockURLProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var mockResponses: [String: (Int, Data, [String: String])] = [:]
     nonisolated(unsafe) static var lastRequest: URLRequest?
+    nonisolated(unsafe) static var beforeResponse: (@Sendable () async -> Void)?
 
     static func reset() {
         mockResponses = [:]
         lastRequest = nil
+        beforeResponse = nil
     }
 
     static func register(path: String, statusCode: Int, json: String, headers: [String: String] = [:]) {
@@ -36,6 +38,15 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
         }
         Self.lastRequest = captured
         let path = request.url?.path(percentEncoded: false) ?? ""
+
+        if let beforeResponse = Self.beforeResponse {
+            let completion = DispatchSemaphore(value: 0)
+            Task {
+                await beforeResponse()
+                completion.signal()
+            }
+            completion.wait()
+        }
 
         if let (statusCode, data, headers) = Self.mockResponses.first(where: { path.contains($0.key) })?.value {
             var allHeaders = headers
