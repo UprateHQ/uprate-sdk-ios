@@ -155,28 +155,45 @@ If the server requires a user token or rejects it, the SDK throws `UprateError.u
 
 Uprate sends a notification when a feedback reply arrives, without the reply text. Upload your APNs `.p8` key, Key ID, and Team ID on your app's SDK page under **Push**.
 
-Your app handles notification permission, APNs registration, and notification taps. After `setUserContext` completes, register the device token in `application(_:didRegisterForRemoteNotificationsWithDeviceToken:)`, and register again whenever the token changes:
+Your app handles notification permission, APNs registration, and notification taps. iOS often hands you the device token before anyone has signed in, so keep it and register it both when it arrives and right after `setUserContext`:
 
 ```swift
-func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-    Task {
+var deviceToken: Data?
+
+func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken token: Data) {
+    deviceToken = token
+    Task { await registerForReplyPushes() }
+}
+
+// Also call this right after setUserContext.
+func registerForReplyPushes() async {
+    guard let deviceToken else { return }
+    do {
         try await UprateSDK.shared.feedback.registerPushToken(deviceToken)
+    } catch UprateError.userContextNotSet {
+        // Nobody is signed in yet; setUserContext calls this again.
+    } catch {
+        print("Uprate push registration failed: \(error)")
     }
 }
 ```
 
-Keep the latest device token and unregister it before clearing the user context on logout:
+On logout, unregister the device before clearing the user context, and clear it even when unregistering fails (for example offline):
 
 ```swift
-try await UprateSDK.shared.feedback.unregisterPushToken(deviceToken)
-await UprateSDK.shared.clearUserContext()
+if let deviceToken {
+    try? await UprateSDK.shared.feedback.unregisterPushToken(deviceToken)
+}
+try await UprateSDK.shared.clearUserContext()
 ```
 
-In your notification tap handler, use `replyId(fromPush:)` to recognize an Uprate reply push, then call `getUnreadReplies()` and display the returned replies:
+In your notification tap handler, use `replyId(fromPush:)` to recognize an Uprate reply push, then show the unread replies and mark them read:
 
 ```swift
 if UprateFeedback.replyId(fromPush: userInfo) != nil {
     let replies = try await UprateSDK.shared.feedback.getUnreadReplies()
+    // Show the replies, then:
+    try await UprateSDK.shared.feedback.markRead(replies)
 }
 ```
 
