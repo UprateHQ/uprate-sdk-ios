@@ -62,7 +62,7 @@ public final class UprateFeedback: FeedbackProviding, @unchecked Sendable {
     }
 
     public func getMySubmissions() async throws -> [FeedbackSubmission] {
-        let response = try await apiClient.execute(.myFeedback, as: FeedbackListResponse.self)
+        let response = try await apiClient.execute(.myFeedback, as: FeedbackListResponse.self, sameUser: true)
         return response.feedback
     }
 

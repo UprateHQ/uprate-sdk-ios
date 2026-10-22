@@ -307,13 +307,14 @@ extension SerializedTests {
             #expect(MockURLProtocol.lastRequest == nil)
         }
 
-        @Test("reply operations reject results after user context changes", arguments: [false, true], ["logout", "switch", "token", "logoutLogin"])
-        func repliesRejectChangedContext(markRead: Bool, change: String) async throws {
+        @Test("history and reply operations reject results after user context changes", arguments: ["history", "unread", "read"], ["logout", "switch", "token", "logoutLogin"])
+        func privateReadsRejectChangedContext(call: String, change: String) async throws {
             MockURLProtocol.reset()
             let sdk = UprateSDK(configuration: TestFixtures.testConfiguration, urlSession: .mocked)
             await sdk.setUserContext(userId: "user_1", userToken: "old_token")
             let reply = try JSONDecoder.uprate.decode(FeedbackReply.self, from: Data(replyJSON.utf8))
             MockURLProtocol.register(path: "replies", statusCode: 200, json: "{\"replies\":[\(replyJSON)]}")
+            MockURLProtocol.register(path: "feedback", statusCode: 200, json: "{\"feedback\":[]}")
             MockURLProtocol.beforeResponse = {
                 switch change {
                 case "logout":
@@ -329,10 +330,13 @@ extension SerializedTests {
             }
 
             do {
-                if markRead {
-                    try await sdk.feedback.markRead([reply])
-                } else {
+                switch call {
+                case "history":
+                    _ = try await sdk.feedback.getMySubmissions()
+                case "unread":
                     _ = try await sdk.feedback.getUnreadReplies()
+                default:
+                    try await sdk.feedback.markRead([reply])
                 }
                 Issue.record("Expected userContextChanged")
             } catch UprateError.userContextChanged {

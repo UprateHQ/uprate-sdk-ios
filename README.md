@@ -134,15 +134,20 @@ struct ReplyInbox: View {
                 errorMessage = nil
                 replies = try await UprateSDK.shared.feedback.getUnreadReplies()
                 try await UprateSDK.shared.feedback.markRead(replies)
+            } catch UprateError.userContextChanged {
+                replies = []
             } catch {
                 errorMessage = error.localizedDescription
             }
         }
     }
 }
+
+// Give each signed-in user a fresh inbox, so nobody sees the previous user's replies.
+ReplyInbox().id(currentUser.id)
 ```
 
-Each `FeedbackSubmission` also includes `replies`, an empty array when an older server omits them. Calling `markRead([])` sends no request. If the user changes while `getUnreadReplies()` or `markRead` is in flight, the SDK drops the response and throws `UprateError.userContextChanged`, so one person's replies never reach the next one.
+Each `FeedbackSubmission` also includes `replies`, an empty array when an older server omits them. Calling `markRead([])` sends no request. If the user changes while `getMySubmissions()`, `getUnreadReplies()` or `markRead` is in flight, the SDK drops the response and throws `UprateError.userContextChanged`, so one person's feedback and replies never reach the next one.
 
 If the server requires a user token or rejects it, the SDK throws `UprateError.userTokenRejected(message:)` with the server's message. Other 401 responses still throw `UprateError.invalidApiKey(message:)`.
 
