@@ -65,6 +65,16 @@ public final class UprateFeedback: FeedbackProviding, @unchecked Sendable {
         let response = try await apiClient.execute(.myFeedback, as: FeedbackListResponse.self)
         return response.feedback
     }
+
+    public func getUnreadReplies() async throws -> [FeedbackReply] {
+        let response = try await apiClient.execute(.unreadReplies, as: FeedbackRepliesResponse.self, sameUser: true)
+        return response.replies
+    }
+
+    public func markRead(_ replies: [FeedbackReply]) async throws {
+        guard !replies.isEmpty else { return }
+        try await apiClient.execute(.readReplies(uuids: replies.map(\.id)), sameUser: true)
+    }
 }
 
 // MARK: - Endpoint Definitions
@@ -75,4 +85,10 @@ extension APIEndpoint {
     }
 
     static let myFeedback = APIEndpoint(method: .get, path: "feedback")
+
+    static let unreadReplies = APIEndpoint(method: .get, path: "replies/unread")
+
+    static func readReplies(uuids: [String]) -> APIEndpoint {
+        APIEndpoint(method: .post, path: "replies/read", body: ReadRepliesRequestBody(uuids: uuids))
+    }
 }

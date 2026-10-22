@@ -274,6 +274,33 @@ struct ModelDecodingTests {
         #expect(submission.id == "8f4597c0-f591-4d1d-970d-29c253ef8d6b")
         #expect(submission.sentiment == "mixed")
         #expect(submission.rating == 4)
+        #expect(submission.replies.isEmpty)
+    }
+
+    @Test("decodes FeedbackSubmission with read and unread replies")
+    func decodesFeedbackSubmissionReplies() throws {
+        let json = """
+        {
+            "uuid": "fb-1",
+            "rating": null,
+            "message": "Please fix checkout",
+            "sentiment": null,
+            "created_at": "2026-10-21T10:00:00+00:00",
+            "replies": [
+                {"uuid": "reply-1", "feedback_uuid": "fb-1", "body": "Fixed in 2.3", "created_at": "2026-10-22T10:00:00+00:00", "read_at": "2026-10-22T11:00:00+00:00"},
+                {"uuid": "reply-2", "feedback_uuid": "fb-1", "body": "Let us know how it works", "created_at": "2026-10-22T12:00:00+00:00", "read_at": null}
+            ]
+        }
+        """
+        let submission = try JSONDecoder.uprate.decode(FeedbackSubmission.self, from: Data(json.utf8))
+        #expect(submission.replies.count == 2)
+        #expect(submission.replies[0].id == "reply-1")
+        #expect(submission.replies[0].feedbackId == "fb-1")
+        #expect(submission.replies[0].body == "Fixed in 2.3")
+        #expect(submission.replies[0].createdAt == ISO8601DateFormatter().date(from: "2026-10-22T10:00:00+00:00"))
+        #expect(submission.replies[0].readAt == ISO8601DateFormatter().date(from: "2026-10-22T11:00:00+00:00"))
+        #expect(submission.replies[1].id == "reply-2")
+        #expect(submission.replies[1].readAt == nil)
     }
 
     @Test("decodes FeedbackSubmission with null sentiment and null rating")

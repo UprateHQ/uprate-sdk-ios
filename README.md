@@ -66,14 +66,17 @@ UprateSDK.configure(apiKey: "uprt_pub_your_publishable_key")
 After the user logs in, set their identity:
 
 ```swift
-await UprateSDK.shared.setUserContext(
+try await UprateSDK.shared.setUserContext(
     userId: "user_123",
     email: "jane@example.com",
-    name: "Jane"
+    name: "Jane",
+    userToken: tokenFromYourServer
 )
 ```
 
-Call `clearUserContext()` on logout.
+`userToken` is optional. Your server signs the user ID with HMAC-SHA256 and returns the hex token to your app. Keep the signing secret on your server. See [Verify users](https://upratehq.com/docs/sdk#verify-users). When set, the SDK sends the token as `X-SDK-User-Token` on every request.
+
+Call `clearUserContext()` on logout to clear the identity and token.
 
 ### 4. Use Features
 
@@ -106,6 +109,42 @@ let result = try await UprateSDK.shared.feedback.submit(
 // List user's submissions
 let submissions = try await UprateSDK.shared.feedback.getMySubmissions()
 ```
+
+#### Replies in your app
+
+Fetch unread replies when your app becomes active, display them, then mark them as read. The SDK adds no lifecycle observers, timers, persistence, or UI. For example, in SwiftUI:
+
+```swift
+import SwiftUI
+import UprateSDK
+
+struct ReplyInbox: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var replies: [FeedbackReply] = []
+    @State private var errorMessage: String?
+
+    var body: some View {
+        List {
+            if let errorMessage { Text(errorMessage) }
+            ForEach(replies) { reply in Text(reply.body) }
+        }
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            do {
+                errorMessage = nil
+                replies = try await UprateSDK.shared.feedback.getUnreadReplies()
+                try await UprateSDK.shared.feedback.markRead(replies)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+}
+```
+
+Each `FeedbackSubmission` also includes `replies`, an empty array when an older server omits them. Calling `markRead([])` sends no request. If the user changes while `getUnreadReplies()` or `markRead` is in flight, the SDK drops the response and throws `UprateError.userContextChanged`, so one person's replies never reach the next one.
+
+If the server requires a user token or rejects it, the SDK throws `UprateError.userTokenRejected(message:)` with the server's message. Other 401 responses still throw `UprateError.invalidApiKey(message:)`.
 
 #### Review Signals
 

@@ -4,6 +4,7 @@ actor APIClient {
     private let configuration: UprateConfiguration
     private let urlSession: URLSession
     private var userContext: UserContext?
+    private var userContextVersion = 0
     private let devicePlatform = "ios"
     private let appVersion: String
 
@@ -15,36 +16,42 @@ actor APIClient {
 
     func setUserContext(_ context: UserContext) {
         self.userContext = context
+        userContextVersion += 1
     }
 
     func clearUserContext() {
         self.userContext = nil
+        userContextVersion += 1
     }
 
-    func execute<T: Decodable & Sendable>(_ endpoint: APIEndpoint, as type: T.Type) async throws -> T {
-        guard let userContext else {
-            throw UprateError.userContextNotSet
-        }
-
-        let request = try buildRequest(for: endpoint, userContext: userContext)
-        let (data, httpResponse) = try await performRequest(request)
-
-        try mapErrorResponse(statusCode: httpResponse.statusCode, data: data, headers: httpResponse)
+    /// With `sameUser`, a response that arrives after the user context changed is dropped,
+    /// so one person's private data never reaches the next one on the device.
+    func execute<T: Decodable & Sendable>(_ endpoint: APIEndpoint, as type: T.Type, sameUser: Bool = false) async throws -> T {
+        let data = try await send(endpoint, sameUser: sameUser)
 
         do {
-            return try JSONDecoder.uprate.decode(T.self, from: data)
+            return try JSONDecoder.uprate.decode(T.self, from: data.body)
         } catch {
-            throw UprateError.unexpectedResponse(statusCode: httpResponse.statusCode)
+            throw UprateError.unexpectedResponse(statusCode: data.statusCode)
         }
     }
 
-    func execute(_ endpoint: APIEndpoint) async throws {
+    func execute(_ endpoint: APIEndpoint, sameUser: Bool = false) async throws {
+        _ = try await send(endpoint, sameUser: sameUser)
+    }
+
+    private func send(_ endpoint: APIEndpoint, sameUser: Bool) async throws -> (body: Data, statusCode: Int) {
         guard let userContext else {
             throw UprateError.userContextNotSet
         }
+        let contextVersion = userContextVersion
         let request = try buildRequest(for: endpoint, userContext: userContext)
         let (data, httpResponse) = try await performRequest(request)
+        if sameUser && contextVersion != userContextVersion {
+            throw UprateError.userContextChanged
+        }
         try mapErrorResponse(statusCode: httpResponse.statusCode, data: data, headers: httpResponse)
+        return (data, httpResponse.statusCode)
     }
 }
 
@@ -65,6 +72,9 @@ extension APIClient {
         }
         if let name = userContext.name {
             request.setValue(name, forHTTPHeaderField: "X-SDK-User-Name")
+        }
+        if let userToken = userContext.userToken {
+            request.setValue(userToken, forHTTPHeaderField: "X-SDK-User-Token")
         }
         request.setValue(devicePlatform, forHTTPHeaderField: "X-SDK-Device-Platform")
         request.setValue(appVersion, forHTTPHeaderField: "X-SDK-App-Version")
@@ -96,9 +106,10 @@ extension APIClient {
         case 200...299:
             return
         case 401:
-            // The server explains *which* wrong key type was sent (REST token,
-            // secret key, ...) — surface that instead of a generic rejection.
             let errorBody = try? JSONDecoder.uprate.decode(ErrorResponse.self, from: data)
+            if let errorBody, errorBody.code == "user_token_required" || errorBody.code == "user_token_invalid" {
+                throw UprateError.userTokenRejected(message: errorBody.message)
+            }
             throw UprateError.invalidApiKey(message: errorBody?.message)
         case 403:
             throw UprateError.featureNotEnabled
