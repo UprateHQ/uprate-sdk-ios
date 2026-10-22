@@ -75,6 +75,21 @@ public final class UprateFeedback: FeedbackProviding, @unchecked Sendable {
         guard !replies.isEmpty else { return }
         try await apiClient.execute(.readReplies(uuids: replies.map(\.id)), sameUser: true)
     }
+
+    public func registerPushToken(_ deviceToken: Data) async throws {
+        let body = ["token": deviceToken.map { String(format: "%02x", $0) }.joined(), "provider": "apns"]
+        try await apiClient.execute(APIEndpoint(method: .post, path: "push-tokens", body: body))
+    }
+
+    public func unregisterPushToken(_ deviceToken: Data) async throws {
+        let body = ["token": deviceToken.map { String(format: "%02x", $0) }.joined(), "provider": "apns"]
+        try await apiClient.execute(APIEndpoint(method: .delete, path: "push-tokens", body: body))
+    }
+
+    public static func replyId(fromPush userInfo: [AnyHashable: Any]) -> String? {
+        guard let replyId = userInfo["uprate_reply_uuid"] as? String, !replyId.isEmpty else { return nil }
+        return replyId
+    }
 }
 
 // MARK: - Endpoint Definitions

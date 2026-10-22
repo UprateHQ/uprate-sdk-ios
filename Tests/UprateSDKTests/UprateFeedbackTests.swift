@@ -307,6 +307,61 @@ extension SerializedTests {
             #expect(MockURLProtocol.lastRequest == nil)
         }
 
+        @Test("registerPushToken sends a lowercase hex APNs token using POST /push-tokens")
+        func registerPushToken() async throws {
+            let feedback: any FeedbackProviding = await makeFeedback()
+            MockURLProtocol.register(path: "push-tokens", statusCode: 200, json: #"{"status":"registered"}"#)
+
+            try await feedback.registerPushToken(Data([0x00, 0x01, 0x0a, 0x7f, 0x80, 0xab, 0xff]))
+
+            let request = try #require(MockURLProtocol.lastRequest)
+            #expect(request.httpMethod == "POST")
+            #expect(request.url?.path == "/api/sdk/v1/push-tokens")
+            #expect(request.url?.query == nil)
+            #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+            let body = try #require(request.httpBody)
+            let json = try JSONSerialization.jsonObject(with: body) as? [String: String]
+            #expect(json == ["token": "00010a7f80abff", "provider": "apns"])
+        }
+
+        @Test("unregisterPushToken sends a lowercase hex APNs token in the DELETE /push-tokens body")
+        func unregisterPushToken() async throws {
+            let feedback: any FeedbackProviding = await makeFeedback()
+            MockURLProtocol.register(path: "push-tokens", statusCode: 200, json: #"{"status":"removed"}"#)
+
+            try await feedback.unregisterPushToken(Data([0x00, 0x01, 0x0a, 0x7f, 0x80, 0xab, 0xff]))
+
+            let request = try #require(MockURLProtocol.lastRequest)
+            #expect(request.httpMethod == "DELETE")
+            #expect(request.url?.path == "/api/sdk/v1/push-tokens")
+            #expect(request.url?.query == nil)
+            #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+            let body = try #require(request.httpBody)
+            let json = try JSONSerialization.jsonObject(with: body) as? [String: String]
+            #expect(json == ["token": "00010a7f80abff", "provider": "apns"])
+        }
+
+        @Test("replyId returns the push reply UUID without making a request")
+        func replyIdFromPush() {
+            MockURLProtocol.reset()
+
+            let replyId = UprateFeedback.replyId(fromPush: ["uprate_reply_uuid": "reply-1", "uprate_feedback_uuid": "fb-1"])
+
+            #expect(replyId == "reply-1")
+            #expect(MockURLProtocol.lastRequest == nil)
+        }
+
+        @Test("replyId returns nil for a missing, empty or non-string reply UUID without making a request")
+        func replyIdFromPushInvalid() {
+            MockURLProtocol.reset()
+
+            #expect(UprateFeedback.replyId(fromPush: [:]) == nil)
+            #expect(UprateFeedback.replyId(fromPush: ["uprate_feedback_uuid": "fb-1"]) == nil)
+            #expect(UprateFeedback.replyId(fromPush: ["uprate_reply_uuid": ""]) == nil)
+            #expect(UprateFeedback.replyId(fromPush: ["uprate_reply_uuid": 123]) == nil)
+            #expect(MockURLProtocol.lastRequest == nil)
+        }
+
         @Test("history and reply operations reject results after user context changes", arguments: ["history", "unread", "read"], ["logout", "switch", "token", "logoutLogin"])
         func privateReadsRejectChangedContext(call: String, change: String) async throws {
             MockURLProtocol.reset()
