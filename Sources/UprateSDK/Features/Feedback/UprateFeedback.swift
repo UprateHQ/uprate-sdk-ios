@@ -4,6 +4,7 @@ public final class UprateFeedback: FeedbackProviding, @unchecked Sendable {
     private let apiClient: APIClient
     private let _lock = NSLock()
     private var _collectDeviceMetadataValue: Bool = true
+    private var _lastPushTokenChange: Task<Void, Error>?
 
     /// Controls whether device metadata is auto-collected with feedback submissions.
     /// Default: `true`. Set to `false` to omit device info.
@@ -74,6 +75,35 @@ public final class UprateFeedback: FeedbackProviding, @unchecked Sendable {
     public func markRead(_ replies: [FeedbackReply]) async throws {
         guard !replies.isEmpty else { return }
         try await apiClient.execute(.readReplies(uuids: replies.map(\.id)), sameUser: true)
+    }
+
+    public func registerPushToken(_ deviceToken: Data) async throws {
+        try await changePushToken(.post, deviceToken)
+    }
+
+    public func unregisterPushToken(_ deviceToken: Data) async throws {
+        try await changePushToken(.delete, deviceToken)
+    }
+
+    /// One change at a time, so a slow registration can't reach the server after the logout that unregisters the device.
+    private func changePushToken(_ method: APIEndpoint.HTTPMethod, _ deviceToken: Data) async throws {
+        let body = ["token": deviceToken.map { String(format: "%02x", $0) }.joined(), "provider": "apns"]
+        let endpoint = APIEndpoint(method: method, path: "push-tokens", body: body)
+        let change = _lock.withLock {
+            let previous = _lastPushTokenChange
+            let change = Task { [apiClient] in
+                _ = await previous?.result
+                try await apiClient.execute(endpoint)
+            }
+            _lastPushTokenChange = change
+            return change
+        }
+        try await change.value
+    }
+
+    public static func replyId(fromPush userInfo: [AnyHashable: Any]) -> String? {
+        guard let replyId = userInfo["uprate_reply_uuid"] as? String, !replyId.isEmpty else { return nil }
+        return replyId
     }
 }
 
