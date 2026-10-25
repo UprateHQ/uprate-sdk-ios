@@ -63,8 +63,8 @@ public final class UprateSDK: Sendable {
     }
 
     /// Set the current user's identity. Must be called before using any feature.
-    public func setUserContext(userId: String, email: String? = nil, name: String? = nil) async {
-        await apiClient.setUserContext(UserContext(userId: userId, email: email, name: name))
+    public func setUserContext(userId: String, email: String? = nil, name: String? = nil, userToken: String? = nil) async {
+        await apiClient.setUserContext(UserContext(userId: userId, email: email, name: name, userToken: userToken))
     }
 
     /// Clear the current user's identity (e.g., on logout).
